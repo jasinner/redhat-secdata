@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/quay/claircore/libvuln"
-	"github.com/rs/zerolog"
+	"github.com/quay/claircore/updater/defaults"
+	"github.com/rs/zerolog/log"
 )
 
 func getEnvOrDefault(key string, def string) string {
@@ -18,53 +18,44 @@ func getEnvOrDefault(key string, def string) string {
 	return value
 }
 
-func main() {
-	zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	fmt.Println("Set Global log level")
-
+func getDBConn(ctx context.Context) string {
 	password, exist := os.LookupEnv("DB_PASS")
 	if exist != true {
-		log.Fatal("DB_PASS not found in environment")
+		log.Ctx(ctx).Error().Msg("DB_PASS environment variable not found")
 	}
 	host := getEnvOrDefault("DB_HOST", "postgres")
 	user := getEnvOrDefault("DB_USER", "postgres")
 	dbname := getEnvOrDefault("DB_NAME", "claircore")
-	connection := fmt.Sprintf("host=%v port=5432 sslmode=disable user=%v dbname=%v password=%v", host, user, dbname, password)
+	return fmt.Sprintf("host=%v port=5432 sslmode=disable user=%v dbname=%v password=%v", host, user, dbname, password)
+}
+
+func main() {
+
+	globalLogger := log.With().Timestamp().Logger()
+	ctx := globalLogger.WithContext(context.Background())
+
+	connection := getDBConn(ctx)
+
 	opts := libvuln.Opts{
-		//MaxConnPool int32
 		ConnString: connection,
-		//UpdateInterval time.Duration
-		// Determines if Livuln will manage database migrations
 		Migrations: true,
-
+		//Only get the RHEL data, change to nil for all Clair data
 		UpdaterSets: []string{"rhel"},
-		// A list of out-of-tree updaters to run.
-		//
-		// This list will be merged with any defined UpdaterSets.
-		//
-		// If you desire no updaters to run do not add an updater
-		// into this slice.
-		//Updaters []driver.Updater
-		// A list of out-of-tree matchers you'd like libvuln to
-		// use.
-		//
-		// This list will me merged with the default matchers.
-		//Matchers []driver.Matcher
 
-		// If set to true, there will not be a goroutine launched to periodically
-		// run updaters.
-		//DisableBackgroundUpdates false
-
-		// UpdaterConfigs is a map of functions for configuration of Updaters.
-		//UpdaterConfigs map[string]driver.ConfigUnmarshaler
-
+		DisableBackgroundUpdates: true,
+		//TODO filter on RHCOS cpes?
 		//UpdaterFilter func(name string) (keep bool)
 	}
 
-	ctx := context.TODO()
-	libvuln, err := libvuln.New(ctx, &opts)
-	fmt.Printf("created lib vuln %v\n", libvuln)
+	//This is necessary to load the updaters
+	err := defaults.Error()
 	if err != nil {
-		log.Fatal(err)
+		globalLogger.Error().Err(err).Msg("error during updater initialization")
 	}
+
+	_, err = libvuln.New(ctx, &opts)
+	if err != nil {
+		globalLogger.Error().Err(err).Msg("Error creating vuln library")
+	}
+	globalLogger.Info().Msg("Update complete, will exit")
 }
