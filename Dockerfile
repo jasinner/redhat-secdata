@@ -1,4 +1,4 @@
-FROM registry.fedoraproject.org/fedora:32 AS builder
+FROM registry.fedoraproject.org/fedora:33 AS builder
 RUN dnf install -y golang-bin; dnf clean all;
 WORKDIR /opt
 COPY go.mod .
@@ -7,7 +7,7 @@ RUN go mod download
 COPY . .
 RUN go build -o /opt/bin
 
-FROM registry.fedoraproject.org/fedora:32
+FROM registry.fedoraproject.org/fedora:33
 ADD wait-for-postgres.sh /app/
 RUN dnf install -y golang-bin postgresql; dnf clean all;
 COPY --from=builder /opt/bin/rhcos-scanner /app/
